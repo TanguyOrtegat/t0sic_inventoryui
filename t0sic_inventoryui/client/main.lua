@@ -10,6 +10,24 @@ local Keys = {
     ["NENTER"] = 201, ["N4"] = 108, ["N5"] = 60, ["N6"] = 107, ["N+"] = 96, ["N-"] = 97, ["N7"] = 117, ["N8"] = 61, ["N9"] = 118
   }
 
+  -- Credits To @Kalu / @Kashnars For Doing the money part, I just took their wallet script and remade it https://forum.fivem.net/t/release-allcity-wallet-esx/145419 If you wan't me to remove it please pm me-->
+
+  ESX = nil
+
+  Citizen.CreateThread(function()
+  
+      while ESX == nil do
+          TriggerEvent("esx:getSharedObject", function(sharedObject) ESX = sharedObject end)
+          Citizen.Wait(50)
+      end
+  
+      while ESX.IsPlayerLoaded() == false do
+          Citizen.Wait(5)
+      end
+  
+      PlayerData = ESX.GetPlayerData()
+  end)
+
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(0)
@@ -24,6 +42,16 @@ Citizen.CreateThread(function()
     end
 end)
 
+Citizen.CreateThread(function() 
+	while true do
+		Citizen.Wait(500)
+		TriggerServerEvent('allcity_wallet:getMoneys')
+	end
+	
+end)
+
+RegisterNetEvent("allcity_wallet:setValues")
+
 
 RegisterNUICallback('NUIFocusOff', function()
 	open = false
@@ -31,20 +59,27 @@ RegisterNUICallback('NUIFocusOff', function()
 	SendNUIMessage({type = 'close'})
 end)
 
-ESX = nil
+AddEventHandler("allcity_wallet:setValues", function(wallet, bank, black_money, society)
 
-Citizen.CreateThread(function()
+    local label = PlayerData.job.grade_label
 
-    while ESX == nil do
-        TriggerEvent("esx:getSharedObject", function(sharedObject) ESX = sharedObject end)
-        Citizen.Wait(50)
-    end
+	SendNUIMessage({
+		wallet = wallet,
+        bank = bank,
+        label = PlayerData.job.grade_label,
+		black_money = black_money
+		})	
 
-    while ESX.IsPlayerLoaded() == false do
-        Citizen.Wait(5)
-    end
+end)
 
-    PlayerData = ESX.GetPlayerData()
+RegisterNetEvent('esx:playerLoaded')
+AddEventHandler('esx:playerLoaded', function(xPlayer)
+    PlayerData = xPlayer
+end)
+
+RegisterNetEvent('esx:setJob')
+AddEventHandler('esx:setJob', function(job)
+    PlayerData.job = job
 end)
 
 function getInventory()
@@ -52,9 +87,29 @@ function getInventory()
     local playerPed = PlayerPedId()
     local inventory = PlayerData["inventory"]
     
+    RegisterNetEvent('esx:playerLoaded')
+    AddEventHandler('esx:playerLoaded', function(xPlayer)
+        PlayerData = xPlayer
+    end)
+
+    RegisterNetEvent('esx:setJob')
+    AddEventHandler('esx:setJob', function(job)
+        PlayerData.job = job
+    end)
+
     local item = {
         ["name"] = "test", ["amount"] = 2
     }
+
+    local weaponsList = ESX.GetWeaponList()
+    for i=1, #weaponsList, 1 do
+        local weaponHash = GetHashKey(weaponsList[i].name)
+
+        if HasPedGotWeapon(playerPed, weaponHash, false) and weaponsList[i].name ~= 'WEAPON_UNARMED' then
+            local ammo = GetAmmoInPedWeapon(playerPed, weaponHash)
+            table.insert(item, {weaponsList[i].name, ammo})
+        end
+    end
     
     for i = 1, #inventory do
         if inventory[i]["count"] >= 1 then
@@ -74,22 +129,22 @@ RegisterNUICallback('NUIFocusOff', function()
 end)
 
 RegisterNUICallback("drop", function(data)
-    print(data.item, data.count)
     TriggerServerEvent('esx:removeInventoryItem', 'item_standard', data.item , data.count)
+    TriggerServerEvent('esx:removeInventoryItem', 'item_weapon', data.item, nil)
 end)
 
 RegisterNUICallback('use', function(data)
-    print(data.item)
     TriggerServerEvent('esx:useItem', data.item)
     SendNUIMessage({
         action = "close"
     })
 end)
-AddEventHandler('onResourceStop', function(resource)
-    if resource == GetCurrentResourceName() then
 
-            SetNuiFocus(false, false)
-            SendNUIMessage({ action = "close"})
+RegisterNUICallback("dropcash", function(data)
+    TriggerServerEvent('esx:removeInventoryItem', 'item_money',  ESX.Math.GroupDigits(PlayerData["money"]) , tonumber(data.count))
+end)
 
-    end
+RegisterNUICallback("dropblackcash", function(data)
+    PlayerData = ESX.GetPlayerData()
+    TriggerServerEvent('esx:removeInventoryItem', 'item_account',  'black_money' , tonumber(data.count))
 end)
